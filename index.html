@@ -2,7 +2,10 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>Shape Swipe</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -18,6 +21,14 @@
           <span class="label">콤보</span>
           <span id="combo-value" class="value">0</span>
         </div>
+        <div class="stat-block">
+          <span class="label">콤보 타이머</span>
+          <span id="combo-timer" class="value">--</span>
+        </div>
+        <div class="stat-block">
+          <span class="label">남은 시간</span>
+          <span id="time-value" class="value">60s</span>
+        </div>
         <button id="reset-button" type="button">다시 시작</button>
       </header>
 
@@ -31,6 +42,20 @@
         ></canvas>
         <div id="status-message" class="status-message" aria-live="polite"></div>
       </section>
+      <div id="game-over" class="game-over" aria-live="assertive">
+        <div class="game-over-card">
+          <h2>게임 종료!</h2>
+          <p>
+            최종 점수:
+            <strong id="final-score">0</strong>
+          </p>
+          <p>
+            최고 콤보:
+            <strong id="final-combo">0</strong>
+          </p>
+          <button id="restart-button" type="button">다시 하기</button>
+        </div>
+      </div>
 
       <!-- 간단 설명 -->
       <section class="instructions">

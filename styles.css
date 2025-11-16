@@ -34,6 +34,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  position: relative;
 }
 
 /* HUD 정렬 */
@@ -85,6 +86,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
   min-height: 420px;
+  overflow: hidden;
 }
 
 canvas {
@@ -155,4 +157,50 @@ canvas {
   .canvas-wrapper {
     min-height: 360px;
   }
+}
+.game-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 22, 0.82);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.game-over.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.game-over-card {
+  background: rgba(16, 20, 40, 0.95);
+  border-radius: 24px;
+  padding: 24px 30px;
+  text-align: center;
+  box-shadow: 0 30px 40px rgba(0, 0, 0, 0.4);
+}
+
+.game-over-card h2 {
+  margin: 0 0 10px;
+  font-size: 1.4rem;
+}
+
+.game-over-card p {
+  margin: 8px 0;
+  font-weight: 600;
+}
+
+.game-over-card button {
+  margin-top: 16px;
+  padding: 10px 26px;
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #50c2ff, #7a33ff);
+  cursor: pointer;
 }
