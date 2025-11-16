@@ -1,0 +1,158 @@
+/* 전역 기본값 */
+:root {
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
+  color: #f5f7ff;
+  background: #050816;
+  line-height: 1.4;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 배경 및 전체 중앙 정렬 */
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 20% 20%, #1d1f3b, #050816 60%);
+}
+
+.game {
+  width: min(440px, 100vw);
+  min-height: min(92vh, 820px);
+  background: rgba(7, 11, 26, 0.92);
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 30px 60px rgba(4, 6, 18, 0.85);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* HUD 정렬 */
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.stat-block .value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  color: #fff;
+}
+
+#reset-button {
+  margin-left: auto;
+  background: linear-gradient(135deg, #5d5fef, #7a33ff);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+#reset-button:active {
+  transform: scale(0.96);
+}
+
+/* 게임 캔버스 컨테이너 */
+.canvas-wrapper {
+  flex: 1;
+  position: relative;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  min-height: 420px;
+}
+
+canvas {
+  width: 100%;
+  height: min(64vh, 520px);
+  display: block;
+  touch-action: none;
+}
+
+/* 상단 상태 토스트 */
+.status-message {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: rgba(5, 8, 22, 0.65);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  color: #fff;
+}
+
+.status-message.visible {
+  opacity: 1;
+}
+
+.status-message[data-variant="success"] {
+  color: #8fffc4;
+}
+
+.status-message[data-variant="bonus"] {
+  color: #ffd966;
+}
+
+.status-message[data-variant="miss"] {
+  color: #ff8f8f;
+}
+
+/* 하단 설명 */
+.instructions {
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 14px 16px;
+  line-height: 1.5;
+}
+
+.instructions p {
+  margin: 4px 0;
+}
+
+@media (max-height: 760px) {
+  body {
+    padding: 12px;
+  }
+
+  .game {
+    min-height: unset;
+  }
+
+  .canvas-wrapper {
+    min-height: 360px;
+  }
+}

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shape Swipe</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game">
+      <!-- HUD: 점수/콤보/리셋 -->
+      <header class="hud">
+        <div class="stat-block">
+          <span class="label">점수</span>
+          <span id="score-value" class="value">0</span>
+        </div>
+        <div class="stat-block">
+          <span class="label">콤보</span>
+          <span id="combo-value" class="value">0</span>
+        </div>
+        <button id="reset-button" type="button">다시 시작</button>
+      </header>
+
+      <!-- 실제 게임 플레이 영역 -->
+      <section class="canvas-wrapper">
+        <canvas
+          id="play-canvas"
+          width="360"
+          height="600"
+          aria-label="Shape fling arena"
+        ></canvas>
+        <div id="status-message" class="status-message" aria-live="polite"></div>
+      </section>
+
+      <!-- 간단 설명 -->
+      <section class="instructions">
+        <p>① 아래 토큰을 탭해서 색을 RED → GREEN → BLUE 순으로 바꿔요.</p>
+        <p>② 슬롯의 도형과 색을 맞춰 위쪽으로 스와이프해서 던지세요.</p>
+        <p>③ 화면 밖으로 나가지 않도록 벽에 부딪히면 자동으로 튕깁니다.</p>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
