@@ -67,9 +67,11 @@ const timeValue = document.getElementById("time-value");
 const resetButton = document.getElementById("reset-button");
 const statusMessage = document.getElementById("status-message");
 const gameOverLayer = document.getElementById("game-over");
+const introLayer = document.getElementById("game-intro");
 const finalScoreValue = document.getElementById("final-score");
 const finalComboValue = document.getElementById("final-combo");
 const restartButton = document.getElementById("restart-button");
+const startButton = document.getElementById("start-button");
 
 let worldWidth = canvas.width;
 let worldHeight = canvas.height;
@@ -93,6 +95,7 @@ let lastComboTime = 0;
 let timeRemaining = ROUND_DURATION;
 let gameOver = false;
 let bestCombo = 0;
+let gameStarted = false;
 
 // 현재 포인터(터치) 상태
 const pointerState = {
@@ -151,7 +154,7 @@ function updateSlotAreas() {
 
 // 신규 토큰 생성
 function spawnToken() {
-  if (gameOver) return;
+  if (!gameStarted || gameOver) return;
   activeToken = {
     shape: randomShape(),
     colorIndex: randomColorIndex(),
@@ -196,6 +199,7 @@ function updateTimerDisplay() {
 
 // 전체 상태 초기화
 function resetGame() {
+  gameStarted = true;
   if (spawnTimer) {
     clearTimeout(spawnTimer);
     spawnTimer = null;
@@ -216,6 +220,7 @@ function resetGame() {
   spawnToken();
   setStatus("새 도형! 탭으로 색을 바꾼 뒤 스와이프", "info");
   hideGameOverDialog();
+  hideIntroDialog();
 }
 
 function getCanvasPoint(event) {
@@ -228,6 +233,7 @@ function getCanvasPoint(event) {
 // 토큰 잡기
 function pointerDown(event) {
   if (
+    !gameStarted ||
     gameOver ||
     !activeToken ||
     activeToken.moving ||
@@ -326,13 +332,15 @@ function update(delta) {
     }
   });
 
-  if (!gameOver) {
+  if (gameStarted && !gameOver) {
     timeRemaining = Math.max(0, timeRemaining - delta * 1000);
     updateTimerDisplay();
     if (timeRemaining <= 0) {
       endGame();
       return;
     }
+  } else {
+    updateTimerDisplay();
   }
 
   enforceComboWindow();
@@ -468,9 +476,7 @@ function finishRound() {
   activeToken = null;
   if (spawnTimer) clearTimeout(spawnTimer);
   if (gameOver) return;
-  spawnTimer = setTimeout(() => {
-    spawnToken();
-  }, NEXT_TOKEN_DELAY);
+  spawnToken();
 }
 
 function endGame() {
@@ -743,6 +749,16 @@ function hideGameOverDialog() {
   gameOverLayer.classList.remove("visible");
 }
 
+function showIntroDialog() {
+  if (!introLayer) return;
+  introLayer.classList.add("visible");
+}
+
+function hideIntroDialog() {
+  if (!introLayer) return;
+  introLayer.classList.remove("visible");
+}
+
 canvas.addEventListener("pointerdown", pointerDown);
 canvas.addEventListener("pointermove", pointerMove);
 canvas.addEventListener("pointerup", pointerUp);
@@ -756,6 +772,47 @@ if (restartButton) {
   });
 }
 
+if (startButton) {
+  startButton.addEventListener("click", () => {
+    hideIntroDialog();
+    resetGame();
+  });
+}
+
+// 모바일 핀치 줌 방지
+window.addEventListener(
+  "gesturestart",
+  (event) => {
+    event.preventDefault();
+  },
+  { passive: false }
+);
+
+let lastTouchEnd = 0;
+window.addEventListener(
+  "touchstart",
+  (event) => {
+    if (event.touches.length > 1) {
+      event.preventDefault();
+    }
+  },
+  { passive: false }
+);
+
+window.addEventListener(
+  "touchend",
+  (event) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 350) {
+      event.preventDefault();
+    }
+    lastTouchEnd = now;
+  },
+  { passive: false }
+);
+
 resizeCanvas();
-resetGame();
+updateTimerDisplay();
+updateComboTimerText();
 requestAnimationFrame(loop);
+showIntroDialog();
