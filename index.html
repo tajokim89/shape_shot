@@ -2,16 +2,12 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Shape Swipe</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="game">
-      <!-- HUD: 점수/콤보/리셋 -->
       <header class="hud">
         <div class="stat-block">
           <span class="label">점수</span>
@@ -32,36 +28,26 @@
         <button id="reset-button" type="button">다시 시작</button>
       </header>
 
-      <!-- 실제 게임 플레이 영역 -->
       <section class="canvas-wrapper">
-        <canvas
-          id="play-canvas"
-          width="360"
-          height="600"
-          aria-label="Shape fling arena"
-        ></canvas>
+        <canvas id="play-canvas" width="360" height="600" aria-label="Shape fling arena"></canvas>
         <div id="status-message" class="status-message" aria-live="polite"></div>
       </section>
+
       <div id="game-intro" class="game-intro visible" aria-live="polite">
         <div class="game-over-card">
           <h2>게임 설명</h2>
-          <p>① 토큰을 탭해 색을 RED → GREEN → BLUE 순으로 바꿔요.</p>
-          <p>② 원하는 색을 맞춘 뒤 위쪽 슬롯으로 스와이프해 던지세요.</p>
-          <p>③ 슬롯 모양과 색을 맞추면 점수/콤보! 60초 안에 기록을 세워보세요.</p>
+          <p>1. 토큰을 탭해 색을 RED → GREEN → BLUE 순으로 바꿔요.</p>
+          <p>2. 원하는 색을 맞춘 뒤 위쪽 슬롯으로 스와이프해 던지세요.</p>
+          <p>3. 슬롯 모양과 색을 맞추면 점수/콤보! 60초 안에 기록을 세워보세요.</p>
           <button id="start-button" type="button">시작</button>
         </div>
       </div>
+
       <div id="game-over" class="game-over" aria-live="assertive">
         <div class="game-over-card">
           <h2>게임 종료!</h2>
-          <p>
-            최종 점수:
-            <strong id="final-score">0</strong>
-          </p>
-          <p>
-            최고 콤보:
-            <strong id="final-combo">0</strong>
-          </p>
+          <p>최종 점수: <strong id="final-score">0</strong></p>
+          <p>최고 콤보: <strong id="final-combo">0</strong></p>
           <button id="restart-button" type="button">다시 하기</button>
         </div>
       </div>

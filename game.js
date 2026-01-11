@@ -1,28 +1,15 @@
-// 기본 타입 정의
-const ShapeType = {
-  RECT: "RECT",
-  CIRCLE: "CIRCLE",
-  TRIANGLE: "TRIANGLE",
-};
+// Shape Types & Colors
+const ShapeType = { RECT: "RECT", CIRCLE: "CIRCLE", TRIANGLE: "TRIANGLE" };
+const ColorType = { RED: "RED", GREEN: "GREEN", BLUE: "BLUE" };
 
-const ColorType = {
-  RED: "RED",
-  GREEN: "GREEN",
-  BLUE: "BLUE",
-};
-
-// 실제 색상/라벨 매핑
 const COLORS = [
   { type: ColorType.RED, label: "RED", hex: "#ff5f5f" },
   { type: ColorType.GREEN, label: "GREEN", hex: "#3dd598" },
   { type: ColorType.BLUE, label: "BLUE", hex: "#4a7fff" },
 ];
 
-const COLOR_ORDER = COLORS.map((entry) => entry.type);
-const COLOR_MAP = COLORS.reduce((acc, color) => {
-  acc[color.type] = color;
-  return acc;
-}, {});
+const COLOR_ORDER = COLORS.map((c) => c.type);
+const COLOR_MAP = Object.fromEntries(COLORS.map((c) => [c.type, c]));
 
 const SLOT_BLUEPRINT = [
   { id: 1, shape: ShapeType.RECT, bonusColor: ColorType.RED },
@@ -30,77 +17,67 @@ const SLOT_BLUEPRINT = [
   { id: 3, shape: ShapeType.TRIANGLE, bonusColor: ColorType.BLUE },
 ];
 
-// 점수 규칙
-const SCORE_RULE = {
-  base: 100,
-  bonus: 150,
-  miss: 50,
-  comboBonus: 40,
-  milestone: 200, // extra points for combo milestones
+// Game Constants
+const CONFIG = {
+  tokenRadius: 32,
+  minSwipeDistance: 22,
+  tapDistance: 8,
+  tapTime: 240,
+  speedScale: 1.7,
+  maxInitialSpeed: 1200,
+  stopSpeed: 35,
+  stopDelay: 0.35,
+  bounceFactor: 0.75,
+  dampingPerSecond: 0.5,
+  matchCoverage: 0.7,
+  coverageSlices: 15,
+  comboWindow: 3000,
+  roundDuration: 60000,
+  minThrowSpeed: 250,
+  minVerticalSpeed: 200,
 };
 
-const TOKEN_RADIUS = 32;
-const MIN_SWIPE_DISTANCE = 22;
-const TAP_DISTANCE = 8;
-const TAP_TIME = 240;
-const SPEED_SCALE = 1.7;
-const MAX_INITIAL_SPEED = 1200;
-const STOP_SPEED = 35;
-const STOP_DELAY = 0.35;
-const BOUNCE_FACTOR = 0.75;
-const DAMPING_PER_SECOND = 0.5; // speed halves per second
-const NEXT_TOKEN_DELAY = 300;
-const MATCH_COVERAGE = 0.7;
-const COVERAGE_SLICES = 15;
-const COMBO_WINDOW = 3000; // ms allowed between bonus hits
-const ROUND_DURATION = 60000; // 60 seconds per play session
-const MIN_THROW_SPEED = 250; // px per second
-const MIN_VERTICAL_SPEED = 200; // px per second upward required
+const SCORE = { base: 100, bonus: 150, miss: 50, comboBonus: 40, milestone: 200 };
 
-// 캔버스 및 HUD 요소
-const canvas = document.getElementById("play-canvas");
+// DOM Elements
+const $ = (id) => document.getElementById(id);
+const canvas = $("play-canvas");
 const ctx = canvas.getContext("2d");
-const scoreValue = document.getElementById("score-value");
-const comboValue = document.getElementById("combo-value");
-const comboTimerValue = document.getElementById("combo-timer");
-const timeValue = document.getElementById("time-value");
-const resetButton = document.getElementById("reset-button");
-const statusMessage = document.getElementById("status-message");
-const gameOverLayer = document.getElementById("game-over");
-const introLayer = document.getElementById("game-intro");
-const finalScoreValue = document.getElementById("final-score");
-const finalComboValue = document.getElementById("final-combo");
-const restartButton = document.getElementById("restart-button");
-const startButton = document.getElementById("start-button");
+const dom = {
+  score: $("score-value"),
+  combo: $("combo-value"),
+  comboTimer: $("combo-timer"),
+  time: $("time-value"),
+  status: $("status-message"),
+  gameOver: $("game-over"),
+  intro: $("game-intro"),
+  finalScore: $("final-score"),
+  finalCombo: $("final-combo"),
+  resetBtn: $("reset-button"),
+  restartBtn: $("restart-button"),
+  startBtn: $("start-button"),
+};
 
-let worldWidth = canvas.width;
-let worldHeight = canvas.height;
-let pixelRatio = window.devicePixelRatio || 1;
+// Game State
+const state = {
+  worldWidth: canvas.width,
+  worldHeight: canvas.height,
+  pixelRatio: window.devicePixelRatio || 1,
+  token: null,
+  score: 0,
+  combo: 0,
+  bestCombo: 0,
+  lastComboTime: 0,
+  timeRemaining: CONFIG.roundDuration,
+  gameOver: false,
+  gameStarted: false,
+  lastFrame: 0,
+  statusTimer: null,
+};
 
-// 렌더/판정용 슬롯 정보
-const slots = SLOT_BLUEPRINT.map((slot) => ({
-  ...slot,
-  area: { x: 0, y: 0, width: 0, height: 0 },
-  flash: null,
-  flashTimer: 0,
-}));
-
-let activeToken = null;
-let spawnTimer = null;
-let score = 0;
-let combo = 0;
-let lastFrame = 0;
-let statusTimer = null;
-let lastComboTime = 0;
-let timeRemaining = ROUND_DURATION;
-let gameOver = false;
-let bestCombo = 0;
-let gameStarted = false;
-
-// 현재 포인터(터치) 상태
-const pointerState = {
+const pointer = {
   active: false,
-  pointerId: null,
+  id: null,
   startX: 0,
   startY: 0,
   lastX: 0,
@@ -109,442 +86,258 @@ const pointerState = {
   moved: false,
 };
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+const slots = SLOT_BLUEPRINT.map((s) => ({
+  ...s,
+  area: { x: 0, y: 0, width: 0, height: 0 },
+  flash: null,
+  flashTimer: 0,
+}));
+
+// Utility Functions
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+const randomShape = () => Object.values(ShapeType)[Math.floor(Math.random() * 3)];
+const randomColorIndex = () => Math.floor(Math.random() * COLOR_ORDER.length);
+
+function hexToRgba(hex, alpha) {
+  const rgb = hex.replace("#", "");
+  if (rgb.length !== 6) return hex;
+  const r = parseInt(rgb.slice(0, 2), 16);
+  const g = parseInt(rgb.slice(2, 4), 16);
+  const b = parseInt(rgb.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
 }
 
-function randomShape() {
-  const pool = Object.values(ShapeType);
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-function randomColorIndex() {
-  return Math.floor(Math.random() * COLOR_ORDER.length);
-}
-
-// 기기 회전/리사이즈 대응
+// Canvas Setup
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
-  pixelRatio = window.devicePixelRatio || 1;
-  canvas.width = rect.width * pixelRatio;
-  canvas.height = rect.height * pixelRatio;
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  worldWidth = rect.width;
-  worldHeight = rect.height;
+  state.pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = rect.width * state.pixelRatio;
+  canvas.height = rect.height * state.pixelRatio;
+  ctx.setTransform(state.pixelRatio, 0, 0, state.pixelRatio, 0, 0);
+  state.worldWidth = rect.width;
+  state.worldHeight = rect.height;
   updateSlotAreas();
-  if (activeToken) {
-    const r = activeToken.radius;
-    activeToken.position.x = clamp(activeToken.position.x, r, worldWidth - r);
-    activeToken.position.y = clamp(activeToken.position.y, r, worldHeight - r);
+  if (state.token) {
+    const r = state.token.radius;
+    state.token.x = clamp(state.token.x, r, state.worldWidth - r);
+    state.token.y = clamp(state.token.y, r, state.worldHeight - r);
   }
 }
 
 function updateSlotAreas() {
-  const paddingX = 18;
-  const gap = 0;
-  const height = Math.min(120, worldHeight * 0.2);
-  const width = (worldWidth - paddingX * 2 - gap * 2) / 3;
-  slots.forEach((slot, index) => {
-    slot.area.x = paddingX + index * (width + gap);
-    slot.area.y = 14;
-    slot.area.width = width;
-    slot.area.height = height;
+  const padding = 18;
+  const height = Math.min(120, state.worldHeight * 0.2);
+  const width = (state.worldWidth - padding * 2) / 3;
+  slots.forEach((slot, i) => {
+    slot.area = { x: padding + i * width, y: 14, width, height };
   });
 }
 
-// 신규 토큰 생성
+// Token Management
 function spawnToken() {
-  if (!gameStarted || gameOver) return;
-  activeToken = {
+  if (!state.gameStarted || state.gameOver) return;
+  const colorIndex = randomColorIndex();
+  state.token = {
     shape: randomShape(),
-    colorIndex: randomColorIndex(),
-    color: null,
-    position: {
-      x: worldWidth / 2,
-      y: worldHeight - TOKEN_RADIUS - 18,
-    },
-    velocity: { x: 0, y: 0 },
+    colorIndex,
+    color: COLOR_ORDER[colorIndex],
+    x: state.worldWidth / 2,
+    y: state.worldHeight - CONFIG.tokenRadius - 18,
+    vx: 0,
+    vy: 0,
     moving: false,
     restTimer: 0,
-    radius: TOKEN_RADIUS,
+    radius: CONFIG.tokenRadius,
   };
-  activeToken.color = COLOR_ORDER[activeToken.colorIndex];
 }
 
-// 탭으로 색 순환
 function cycleTokenColor() {
-  if (!activeToken || activeToken.moving) return;
-  activeToken.colorIndex = (activeToken.colorIndex + 1) % COLOR_ORDER.length;
-  activeToken.color = COLOR_ORDER[activeToken.colorIndex];
-  setStatus(`색 변경: ${COLOR_MAP[activeToken.color].label}`, "info", 600);
+  const t = state.token;
+  if (!t || t.moving) return;
+  t.colorIndex = (t.colorIndex + 1) % COLOR_ORDER.length;
+  t.color = COLOR_ORDER[t.colorIndex];
+  showStatus(`색 변경: ${COLOR_MAP[t.color].label}`, "info", 600);
 }
 
+// UI Updates
 function updateScore(delta) {
-  score = Math.max(0, score + delta);
-  scoreValue.textContent = score;
+  state.score = Math.max(0, state.score + delta);
+  dom.score.textContent = state.score;
 }
 
 function updateCombo(value) {
-  combo = Math.max(0, value);
-  comboValue.textContent = combo;
-  bestCombo = Math.max(bestCombo, combo);
-  updateComboTimerText();
+  state.combo = Math.max(0, value);
+  state.bestCombo = Math.max(state.bestCombo, state.combo);
+  dom.combo.textContent = state.combo;
+  updateComboTimer();
 }
 
-function updateTimerDisplay() {
-  if (!timeValue) return;
-  const seconds = Math.max(0, Math.ceil(timeRemaining / 1000));
-  timeValue.textContent = `${seconds}s`;
+function updateComboTimer() {
+  if (!dom.comboTimer) return;
+  if (state.combo > 0 && state.lastComboTime) {
+    const remaining = Math.max(0, CONFIG.comboWindow - (performance.now() - state.lastComboTime));
+    dom.comboTimer.textContent = remaining > 0 ? `${(remaining / 1000).toFixed(1)}s` : "--";
+  } else {
+    dom.comboTimer.textContent = "--";
+  }
 }
 
-// 전체 상태 초기화
+function updateTimeDisplay() {
+  if (!dom.time) return;
+  const seconds = Math.max(0, Math.ceil(state.timeRemaining / 1000));
+  dom.time.textContent = `${seconds}s`;
+}
+
+function showStatus(message, variant = "info", duration = 1200) {
+  dom.status.textContent = message;
+  dom.status.dataset.variant = variant;
+  dom.status.classList.add("visible");
+  if (state.statusTimer) clearTimeout(state.statusTimer);
+  state.statusTimer = setTimeout(() => dom.status.classList.remove("visible"), duration);
+}
+
+// Game Control
 function resetGame() {
-  gameStarted = true;
-  if (spawnTimer) {
-    clearTimeout(spawnTimer);
-    spawnTimer = null;
-  }
-  gameOver = false;
-  timeRemaining = ROUND_DURATION;
-  bestCombo = 0;
-  updateScore(-score);
-  lastComboTime = 0;
+  state.gameStarted = true;
+  state.gameOver = false;
+  state.timeRemaining = CONFIG.roundDuration;
+  state.bestCombo = 0;
+  state.score = 0;
+  state.combo = 0;
+  state.lastComboTime = 0;
+  state.token = null;
+
+  dom.score.textContent = "0";
   updateCombo(0);
-  updateComboTimerText();
-  updateTimerDisplay();
-  slots.forEach((slot) => {
-    slot.flash = null;
-    slot.flashTimer = 0;
-  });
-  activeToken = null;
+  updateTimeDisplay();
+  slots.forEach((s) => { s.flash = null; s.flashTimer = 0; });
+
   spawnToken();
-  setStatus("새 도형! 탭으로 색을 바꾼 뒤 스와이프", "info");
-  hideGameOverDialog();
-  hideIntroDialog();
+  showStatus("새 도형! 탭으로 색을 바꾼 뒤 스와이프", "info");
+  dom.gameOver.classList.remove("visible");
+  dom.intro.classList.remove("visible");
 }
 
-function getCanvasPoint(event) {
+function endGame() {
+  if (state.gameOver) return;
+  state.gameOver = true;
+  state.lastComboTime = 0;
+  state.token = null;
+  updateComboTimer();
+  updateTimeDisplay();
+  showStatus("시간 종료! 다시 시작을 눌러요", "miss", 2200);
+  dom.finalScore.textContent = state.score;
+  dom.finalCombo.textContent = state.bestCombo;
+  dom.gameOver.classList.add("visible");
+}
+
+// Input Handling
+function getCanvasPoint(e) {
   const rect = canvas.getBoundingClientRect();
-  const x = ((event.clientX - rect.left) / rect.width) * worldWidth;
-  const y = ((event.clientY - rect.top) / rect.height) * worldHeight;
-  return { x, y };
+  return {
+    x: ((e.clientX - rect.left) / rect.width) * state.worldWidth,
+    y: ((e.clientY - rect.top) / rect.height) * state.worldHeight,
+  };
 }
 
-// 토큰 잡기
-function pointerDown(event) {
-  if (
-    !gameStarted ||
-    gameOver ||
-    !activeToken ||
-    activeToken.moving ||
-    pointerState.active
-  )
-    return;
-  const point = getCanvasPoint(event);
-  const dist = Math.hypot(
-    point.x - activeToken.position.x,
-    point.y - activeToken.position.y
-  );
-  if (dist > activeToken.radius + 12) return;
+function onPointerDown(e) {
+  if (!state.gameStarted || state.gameOver || !state.token || state.token.moving || pointer.active) return;
+  const pt = getCanvasPoint(e);
+  const dist = Math.hypot(pt.x - state.token.x, pt.y - state.token.y);
+  if (dist > state.token.radius + 12) return;
 
-  pointerState.active = true;
-  pointerState.pointerId = event.pointerId;
-  pointerState.startX = point.x;
-  pointerState.startY = point.y;
-  pointerState.lastX = point.x;
-  pointerState.lastY = point.y;
-  pointerState.startTime = performance.now();
-  pointerState.moved = false;
-  canvas.setPointerCapture(event.pointerId);
+  pointer.active = true;
+  pointer.id = e.pointerId;
+  pointer.startX = pointer.lastX = pt.x;
+  pointer.startY = pointer.lastY = pt.y;
+  pointer.startTime = performance.now();
+  pointer.moved = false;
+  canvas.setPointerCapture(e.pointerId);
 }
 
-// 스와이프 추적
-function pointerMove(event) {
-  if (!pointerState.active || event.pointerId !== pointerState.pointerId) return;
-  const point = getCanvasPoint(event);
-  pointerState.lastX = point.x;
-  pointerState.lastY = point.y;
-  const dist = Math.hypot(
-    pointerState.lastX - pointerState.startX,
-    pointerState.lastY - pointerState.startY
-  );
-  if (dist > TAP_DISTANCE) {
-    pointerState.moved = true;
+function onPointerMove(e) {
+  if (!pointer.active || e.pointerId !== pointer.id) return;
+  const pt = getCanvasPoint(e);
+  pointer.lastX = pt.x;
+  pointer.lastY = pt.y;
+  if (Math.hypot(pointer.lastX - pointer.startX, pointer.lastY - pointer.startY) > CONFIG.tapDistance) {
+    pointer.moved = true;
   }
 }
 
-// 탭/스와이프 판단
-function pointerUp(event) {
-  if (!pointerState.active || event.pointerId !== pointerState.pointerId) return;
-  canvas.releasePointerCapture(event.pointerId);
-  const duration = performance.now() - pointerState.startTime;
-  const dx = pointerState.lastX - pointerState.startX;
-  const dy = pointerState.lastY - pointerState.startY;
+function onPointerUp(e) {
+  if (!pointer.active || e.pointerId !== pointer.id) return;
+  canvas.releasePointerCapture(e.pointerId);
+
+  const duration = performance.now() - pointer.startTime;
+  const dx = pointer.lastX - pointer.startX;
+  const dy = pointer.lastY - pointer.startY;
   const distance = Math.hypot(dx, dy);
 
-  if (!pointerState.moved && duration < TAP_TIME) {
+  if (!pointer.moved && duration < CONFIG.tapTime) {
     cycleTokenColor();
-  } else if (distance >= MIN_SWIPE_DISTANCE && duration > 30) {
+  } else if (distance >= CONFIG.minSwipeDistance && duration > 30) {
     launchToken(dx, dy, duration);
   } else {
     cycleTokenColor();
   }
-
-  pointerState.active = false;
+  pointer.active = false;
 }
 
-function pointerCancel(event) {
-  if (!pointerState.active || event.pointerId !== pointerState.pointerId) return;
-  pointerState.active = false;
-  canvas.releasePointerCapture(event.pointerId);
+function onPointerCancel(e) {
+  if (!pointer.active || e.pointerId !== pointer.id) return;
+  pointer.active = false;
+  canvas.releasePointerCapture(e.pointerId);
 }
 
-// 계산된 방향/속도 적용
+// Physics
 function launchToken(dx, dy, durationMs) {
-  if (!activeToken) return;
-  const dirLength = Math.max(Math.hypot(dx, dy), 1);
-  const dirX = dx / dirLength;
-  const dirY = dy / dirLength;
-  const pxPerMs = (dirLength / durationMs) * SPEED_SCALE;
-  const speed = clamp(pxPerMs * 1000, 120, MAX_INITIAL_SPEED);
-  activeToken.velocity.x = dirX * speed;
-  activeToken.velocity.y = dirY * speed;
-  const tooWeak =
-    speed < MIN_THROW_SPEED || activeToken.velocity.y > -MIN_VERTICAL_SPEED;
-  if (tooWeak) {
-    handleWeakThrow();
-    return;
-  }
-  activeToken.moving = true;
-  activeToken.restTimer = 0;
-  setStatus("던짐! 벽에 부딪히면 튕겨요", "info", 800);
-}
+  const t = state.token;
+  if (!t) return;
 
-// 프레임별 물리/판정
-function update(delta) {
-  slots.forEach((slot) => {
-    if (slot.flashTimer > 0) {
-      slot.flashTimer -= delta;
-      if (slot.flashTimer <= 0) {
-        slot.flash = null;
-        slot.flashTimer = 0;
-      }
-    }
-  });
+  const len = Math.max(Math.hypot(dx, dy), 1);
+  const speed = clamp((len / durationMs) * CONFIG.speedScale * 1000, 120, CONFIG.maxInitialSpeed);
+  t.vx = (dx / len) * speed;
+  t.vy = (dy / len) * speed;
 
-  if (gameStarted && !gameOver) {
-    timeRemaining = Math.max(0, timeRemaining - delta * 1000);
-    updateTimerDisplay();
-    if (timeRemaining <= 0) {
-      endGame();
-      return;
-    }
-  } else {
-    updateTimerDisplay();
-  }
-
-  enforceComboWindow();
-
-  if (!activeToken || !activeToken.moving || gameOver) return;
-  const t = activeToken;
-  t.position.x += t.velocity.x * delta;
-  t.position.y += t.velocity.y * delta;
-
-  const damping = Math.pow(DAMPING_PER_SECOND, delta);
-  t.velocity.x *= damping;
-  t.velocity.y *= damping;
-
-  handleBoundaryBounce(t);
-
-  const midAirMatch = findMatchingSlot(t);
-  if (midAirMatch) {
-    resolveSlotOutcome(midAirMatch.slot);
-    return;
-  }
-
-  const speed = Math.hypot(t.velocity.x, t.velocity.y);
-  if (speed < STOP_SPEED) {
-    t.restTimer += delta;
-  } else {
-    t.restTimer = 0;
-  }
-
-  if (t.restTimer > STOP_DELAY) {
+  if (speed < CONFIG.minThrowSpeed || t.vy > -CONFIG.minVerticalSpeed) {
     t.moving = false;
-    t.velocity.x = 0;
-    t.velocity.y = 0;
-    judgeTokenPosition();
-  }
-}
-
-// 화면 경계 반사 처리
-function handleBoundaryBounce(token) {
-  const { radius } = token;
-  const left = radius;
-  const right = worldWidth - radius;
-  const top = radius;
-  const bottom = worldHeight - radius;
-
-  if (token.position.x < left) {
-    token.position.x = left;
-    token.velocity.x *= -BOUNCE_FACTOR;
-  } else if (token.position.x > right) {
-    token.position.x = right;
-    token.velocity.x *= -BOUNCE_FACTOR;
-  }
-
-  if (token.position.y < top) {
-    token.position.y = top;
-    token.velocity.y *= -BOUNCE_FACTOR;
-  } else if (token.position.y > bottom) {
-    token.position.y = bottom;
-    token.velocity.y *= -BOUNCE_FACTOR;
-  }
-}
-
-// 속도가 거의 0일 때 최종 판정
-function judgeTokenPosition() {
-  if (!activeToken) return;
-  const bestMatch = findMatchingSlot(activeToken);
-  if (!bestMatch) {
-    handleMiss();
+    handleMiss(null, "던지는 힘이 너무 약했어요!");
     return;
   }
-  resolveSlotOutcome(bestMatch.slot);
+  t.moving = true;
+  t.restTimer = 0;
+  showStatus("던짐! 벽에 부딪히면 튕겨요", "info", 800);
 }
 
-// 실패 처리
-function handleMiss(slot, message) {
-  flashSlot(slot, "miss");
-  setStatus(message || "MISS! 슬롯과 도형이 맞지 않아요", "miss");
-  updateScore(-SCORE_RULE.miss);
-  lastComboTime = 0;
-  updateCombo(0);
-  updateComboTimerText();
-  finishRound();
+function handleBoundaryBounce(t) {
+  const { radius } = t;
+  const bounds = { left: radius, right: state.worldWidth - radius, top: radius, bottom: state.worldHeight - radius };
+
+  if (t.x < bounds.left) { t.x = bounds.left; t.vx *= -CONFIG.bounceFactor; }
+  else if (t.x > bounds.right) { t.x = bounds.right; t.vx *= -CONFIG.bounceFactor; }
+
+  if (t.y < bounds.top) { t.y = bounds.top; t.vy *= -CONFIG.bounceFactor; }
+  else if (t.y > bounds.bottom) { t.y = bounds.bottom; t.vy *= -CONFIG.bounceFactor; }
 }
 
-function handleWeakThrow() {
-  if (!activeToken) return;
-  activeToken.moving = false;
-  handleMiss(null, "던지는 힘이 너무 약했어요!");
-}
-
-// 도형만 일치
-function handleBasicSuccess(slot) {
-  flashSlot(slot, "success");
-  updateScore(SCORE_RULE.base);
-  lastComboTime = 0;
-  updateCombo(0);
-  updateComboTimerText();
-  setStatus("도형만 일치! +100", "success");
-  finishRound();
-}
-
-// 도형+색 일치
-function handleBonus(slot) {
-  flashSlot(slot, "bonus");
-  const now = performance.now();
-  const withinWindow =
-    combo > 0 && lastComboTime && now - lastComboTime <= COMBO_WINDOW;
-  lastComboTime = now;
-  const nextCombo = withinWindow ? combo + 1 : 1;
-  updateCombo(nextCombo);
-  updateComboTimerText();
-  let gained =
-    SCORE_RULE.base + SCORE_RULE.bonus + combo * SCORE_RULE.comboBonus;
-  let milestoneBonus = 0;
-  if (combo > 0 && combo % 3 === 0) {
-    milestoneBonus = SCORE_RULE.milestone;
-  }
-  gained += milestoneBonus;
-  updateScore(gained);
-  const milestoneText = milestoneBonus ? ` +${milestoneBonus} 보너스!` : "";
-  setStatus(`색까지 완벽! x${combo} 콤보${milestoneText}`, "bonus");
-  finishRound();
-}
-
-// 슬롯 하이라이트 상태
-function flashSlot(slot, type) {
-  if (!slot) return;
-  slot.flash = type;
-  slot.flashTimer = 0.45;
-}
-
-// 다음 라운드 예약
-function finishRound() {
-  activeToken = null;
-  if (spawnTimer) clearTimeout(spawnTimer);
-  if (gameOver) return;
-  spawnToken();
-}
-
-function endGame() {
-  if (gameOver) return;
-  gameOver = true;
-  lastComboTime = 0;
-  updateComboTimerText();
-  if (spawnTimer) {
-    clearTimeout(spawnTimer);
-    spawnTimer = null;
-  }
-  activeToken = null;
-  updateTimerDisplay();
-  setStatus("시간 종료! 다시 시작을 눌러요", "miss", 2200);
-  showGameOverDialog();
-}
-
-// 토큰이 70% 이상 덮은 슬롯 찾기
-function findMatchingSlot(token) {
-  let bestMatch = null;
-  slots.forEach((slot) => {
-    const coverage = circleCoverageInRect(token, slot.area);
-    if (coverage >= MATCH_COVERAGE) {
-      if (!bestMatch || coverage > bestMatch.coverage) {
-        bestMatch = { slot, coverage };
-      }
-    }
-  });
-  return bestMatch;
-}
-
-// 슬롯 판정 공통 처리
-function resolveSlotOutcome(slot) {
-  if (!activeToken) return;
-  activeToken.moving = false;
-  activeToken.velocity.x = 0;
-  activeToken.velocity.y = 0;
-  if (slot.shape !== activeToken.shape) {
-    handleMiss(slot);
-  } else if (activeToken.color === slot.bonusColor) {
-    handleBonus(slot);
-  } else {
-    handleBasicSuccess(slot);
-  }
-}
-
-// 원이 사각형을 덮은 비율 근사
+// Collision Detection
 function circleCoverageInRect(circle, rect) {
-  const r = circle.radius;
+  const { radius: r, x: cx, y: cy } = circle;
   if (r <= 0) return 0;
-  const divisions = COVERAGE_SLICES;
-  let inside = 0;
-  let total = 0;
-  for (let yi = 0; yi < divisions; yi += 1) {
-    const offsetY = -r + (2 * r * yi) / (divisions - 1);
-    for (let xi = 0; xi < divisions; xi += 1) {
-      const offsetX = -r + (2 * r * xi) / (divisions - 1);
-      if (offsetX * offsetX + offsetY * offsetY <= r * r) {
-        total += 1;
-        const sampleX = circle.position.x + offsetX;
-        const sampleY = circle.position.y + offsetY;
-        if (
-          sampleX >= rect.x &&
-          sampleX <= rect.x + rect.width &&
-          sampleY >= rect.y &&
-          sampleY <= rect.y + rect.height
-        ) {
-          inside += 1;
+
+  const n = CONFIG.coverageSlices;
+  let inside = 0, total = 0;
+
+  for (let yi = 0; yi < n; yi++) {
+    const oy = -r + (2 * r * yi) / (n - 1);
+    for (let xi = 0; xi < n; xi++) {
+      const ox = -r + (2 * r * xi) / (n - 1);
+      if (ox * ox + oy * oy <= r * r) {
+        total++;
+        const sx = cx + ox, sy = cy + oy;
+        if (sx >= rect.x && sx <= rect.x + rect.width && sy >= rect.y && sy <= rect.y + rect.height) {
+          inside++;
         }
       }
     }
@@ -552,267 +345,246 @@ function circleCoverageInRect(circle, rect) {
   return total ? inside / total : 0;
 }
 
-// 메인 렌더 루프
-function draw() {
-  ctx.clearRect(0, 0, worldWidth, worldHeight);
-  drawSlots();
-  drawSpawnZone();
-  if (activeToken) {
-    drawToken(activeToken);
+function findMatchingSlot(token) {
+  let best = null;
+  for (const slot of slots) {
+    const coverage = circleCoverageInRect({ radius: token.radius, x: token.x, y: token.y }, slot.area);
+    if (coverage >= CONFIG.matchCoverage && (!best || coverage > best.coverage)) {
+      best = { slot, coverage };
+    }
+  }
+  return best;
+}
+
+// Scoring
+function flashSlot(slot, type) {
+  if (!slot) return;
+  slot.flash = type;
+  slot.flashTimer = 0.45;
+}
+
+function handleMiss(slot, message) {
+  flashSlot(slot, "miss");
+  showStatus(message || "MISS! 슬롯과 도형이 맞지 않아요", "miss");
+  updateScore(-SCORE.miss);
+  state.lastComboTime = 0;
+  updateCombo(0);
+  finishRound();
+}
+
+function handleBasicSuccess(slot) {
+  flashSlot(slot, "success");
+  updateScore(SCORE.base);
+  state.lastComboTime = 0;
+  updateCombo(0);
+  showStatus("도형만 일치! +100", "success");
+  finishRound();
+}
+
+function handleBonus(slot) {
+  flashSlot(slot, "bonus");
+  const now = performance.now();
+  const withinWindow = state.combo > 0 && state.lastComboTime && now - state.lastComboTime <= CONFIG.comboWindow;
+  state.lastComboTime = now;
+
+  const nextCombo = withinWindow ? state.combo + 1 : 1;
+  updateCombo(nextCombo);
+
+  let gained = SCORE.base + SCORE.bonus + state.combo * SCORE.comboBonus;
+  const milestoneBonus = (state.combo > 0 && state.combo % 3 === 0) ? SCORE.milestone : 0;
+  gained += milestoneBonus;
+  updateScore(gained);
+
+  const milestoneText = milestoneBonus ? ` +${milestoneBonus} 보너스!` : "";
+  showStatus(`색까지 완벽! x${state.combo} 콤보${milestoneText}`, "bonus");
+  finishRound();
+}
+
+function resolveSlotOutcome(slot) {
+  const t = state.token;
+  if (!t) return;
+  t.moving = false;
+  t.vx = t.vy = 0;
+
+  if (slot.shape !== t.shape) handleMiss(slot);
+  else if (t.color === slot.bonusColor) handleBonus(slot);
+  else handleBasicSuccess(slot);
+}
+
+function finishRound() {
+  state.token = null;
+  if (!state.gameOver) spawnToken();
+}
+
+// Game Loop
+function update(delta) {
+  // Update slot flash timers
+  for (const slot of slots) {
+    if (slot.flashTimer > 0) {
+      slot.flashTimer -= delta;
+      if (slot.flashTimer <= 0) { slot.flash = null; slot.flashTimer = 0; }
+    }
+  }
+
+  // Update game timer
+  if (state.gameStarted && !state.gameOver) {
+    state.timeRemaining = Math.max(0, state.timeRemaining - delta * 1000);
+    updateTimeDisplay();
+    if (state.timeRemaining <= 0) { endGame(); return; }
+  }
+
+  // Enforce combo window
+  if (!state.gameOver && state.combo > 0 && state.lastComboTime) {
+    if (performance.now() - state.lastComboTime > CONFIG.comboWindow) {
+      state.lastComboTime = 0;
+      updateCombo(0);
+    }
+  }
+  updateComboTimer();
+
+  // Physics update
+  const t = state.token;
+  if (!t || !t.moving || state.gameOver) return;
+
+  t.x += t.vx * delta;
+  t.y += t.vy * delta;
+  const damping = Math.pow(CONFIG.dampingPerSecond, delta);
+  t.vx *= damping;
+  t.vy *= damping;
+
+  handleBoundaryBounce(t);
+
+  // Check for mid-air match
+  const match = findMatchingSlot(t);
+  if (match) { resolveSlotOutcome(match.slot); return; }
+
+  // Check if stopped
+  const speed = Math.hypot(t.vx, t.vy);
+  t.restTimer = speed < CONFIG.stopSpeed ? t.restTimer + delta : 0;
+
+  if (t.restTimer > CONFIG.stopDelay) {
+    t.moving = false;
+    t.vx = t.vy = 0;
+    const finalMatch = findMatchingSlot(t);
+    if (finalMatch) resolveSlotOutcome(finalMatch.slot);
+    else handleMiss();
   }
 }
 
-// 슬롯 영역 렌더
+// Rendering
+function draw() {
+  ctx.clearRect(0, 0, state.worldWidth, state.worldHeight);
+  drawSlots();
+  drawSpawnZone();
+  if (state.token) drawToken(state.token);
+}
+
 function drawSlots() {
-  slots.forEach((slot) => {
+  for (const slot of slots) {
     const { x, y, width, height } = slot.area;
     ctx.save();
     ctx.beginPath();
     roundedRectPath(ctx, x, y, width, height, 18);
-    const highlight = slot.flash === "bonus" ? 0.15 : 0.05;
-    ctx.fillStyle = `rgba(255,255,255,${highlight})`;
+    ctx.fillStyle = `rgba(255,255,255,${slot.flash === "bonus" ? 0.15 : 0.05})`;
     ctx.fill();
     ctx.lineWidth = slot.flash ? 3 : 1.5;
-    let stroke = "rgba(255,255,255,0.18)";
-    if (slot.flash === "miss") stroke = "rgba(255,105,105,0.8)";
-    if (slot.flash === "success") stroke = "rgba(255,255,255,0.55)";
-    if (slot.flash === "bonus") stroke = `${COLOR_MAP[slot.bonusColor].hex}`;
-    ctx.strokeStyle = stroke;
+    ctx.strokeStyle = slot.flash === "miss" ? "rgba(255,105,105,0.8)"
+      : slot.flash === "success" ? "rgba(255,255,255,0.55)"
+      : slot.flash === "bonus" ? COLOR_MAP[slot.bonusColor].hex
+      : "rgba(255,255,255,0.18)";
     ctx.stroke();
     ctx.restore();
 
-    const centerX = x + width / 2;
-    const centerY = y + height / 2 + 6;
+    const cx = x + width / 2, cy = y + height / 2 + 6;
     const size = Math.min(width, height) * 0.6;
-    drawShape(slot.shape, centerX, centerY, size, COLOR_MAP[slot.bonusColor].hex, {
-      shadow: false,
-      borderAlpha: 0.35,
-      fillAlpha: 0.35,
-    });
-  });
+    drawShape(slot.shape, cx, cy, size, COLOR_MAP[slot.bonusColor].hex, { fillAlpha: 0.35, borderAlpha: 0.35 });
+  }
 }
 
-// 하단 가이드 라인
 function drawSpawnZone() {
   ctx.save();
-  const baseline = worldHeight - 50;
   ctx.strokeStyle = "rgba(255,255,255,0.12)";
   ctx.setLineDash([6, 6]);
   ctx.beginPath();
-  ctx.moveTo(30, baseline);
-  ctx.lineTo(worldWidth - 30, baseline);
+  ctx.moveTo(30, state.worldHeight - 50);
+  ctx.lineTo(state.worldWidth - 30, state.worldHeight - 50);
   ctx.stroke();
   ctx.restore();
 }
 
-// 토큰 렌더
-function drawToken(token) {
-  const color = COLOR_MAP[token.color].hex;
-  drawShape(token.shape, token.position.x, token.position.y, token.radius * 2.1, color, {
-    shadow: true,
-    borderAlpha: 0.9,
-    fillAlpha: 1,
-  });
+function drawToken(t) {
+  drawShape(t.shape, t.x, t.y, t.radius * 2.1, COLOR_MAP[t.color].hex, { shadow: true, fillAlpha: 1, borderAlpha: 0.9 });
 }
 
-// 공통 둥근 사각 라인
-function roundedRectPath(context, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  context.moveTo(x + r, y);
-  context.lineTo(x + width - r, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + r);
-  context.lineTo(x + width, y + height - r);
-  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  context.lineTo(x + r, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - r);
-  context.lineTo(x, y + r);
-  context.quadraticCurveTo(x, y, x + r, y);
+function roundedRectPath(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
-// 실제 도형 렌더
-function drawShape(shape, x, y, size, color, options = {}) {
-  const { shadow = false, borderAlpha = 0.6, fillAlpha = 1 } = options;
+function drawShape(shape, x, y, size, color, opts = {}) {
+  const { shadow = false, fillAlpha = 1, borderAlpha = 0.6 } = opts;
   ctx.save();
-  if (shadow) {
-    ctx.shadowColor = `${color}dd`;
-    ctx.shadowBlur = 20;
-  }
-  ctx.fillStyle = applyAlpha(color, fillAlpha);
+  if (shadow) { ctx.shadowColor = `${color}dd`; ctx.shadowBlur = 20; }
+  ctx.fillStyle = hexToRgba(color, fillAlpha);
   ctx.strokeStyle = `rgba(5, 8, 22, ${borderAlpha})`;
   ctx.lineWidth = 2.5;
-  switch (shape) {
-    case ShapeType.RECT: {
-      ctx.beginPath();
-      roundedRectPath(ctx, x - size / 2, y - size / 2, size, size, 12);
-      ctx.fill();
-      ctx.stroke();
-      break;
-    }
-    case ShapeType.CIRCLE: {
-      ctx.beginPath();
-      ctx.arc(x, y, size / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      break;
-    }
-    case ShapeType.TRIANGLE: {
-      ctx.beginPath();
-      ctx.moveTo(x, y - size / 2);
-      ctx.lineTo(x + size / 2, y + size / 2);
-      ctx.lineTo(x - size / 2, y + size / 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      break;
-    }
-    default:
-      break;
+
+  ctx.beginPath();
+  if (shape === ShapeType.RECT) {
+    roundedRectPath(ctx, x - size / 2, y - size / 2, size, size, 12);
+  } else if (shape === ShapeType.CIRCLE) {
+    ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+  } else if (shape === ShapeType.TRIANGLE) {
+    ctx.moveTo(x, y - size / 2);
+    ctx.lineTo(x + size / 2, y + size / 2);
+    ctx.lineTo(x - size / 2, y + size / 2);
+    ctx.closePath();
   }
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 
-// HEX → rgba 변환
-function applyAlpha(hexColor, alpha) {
-  const normalized = clamp(alpha, 0, 1);
-  const rgb = hexColor.replace("#", "");
-  if (rgb.length !== 6) return hexColor;
-  const r = parseInt(rgb.slice(0, 2), 16);
-  const g = parseInt(rgb.slice(2, 4), 16);
-  const b = parseInt(rgb.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${normalized})`;
-}
-
-// 상단 메시지 표출
-function setStatus(message, variant = "info", duration = 1200) {
-  statusMessage.textContent = message;
-  statusMessage.dataset.variant = variant;
-  statusMessage.classList.add("visible");
-  if (statusTimer) clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => {
-    statusMessage.classList.remove("visible");
-  }, duration);
-}
-
-// requestAnimationFrame 루프
 function loop(timestamp) {
-  if (!lastFrame) lastFrame = timestamp;
-  const delta = (timestamp - lastFrame) / 1000;
-  lastFrame = timestamp;
+  if (!state.lastFrame) state.lastFrame = timestamp;
+  const delta = (timestamp - state.lastFrame) / 1000;
+  state.lastFrame = timestamp;
   update(delta);
   draw();
   requestAnimationFrame(loop);
 }
 
-// 콤보 유효시간 표시 및 만료 처리
-function enforceComboWindow() {
-  if (gameOver) {
-    updateComboTimerText();
-    return;
-  }
-  if (!combo || !lastComboTime) {
-    updateComboTimerText();
-    return;
-  }
-  const remaining = COMBO_WINDOW - (performance.now() - lastComboTime);
-  if (remaining <= 0) {
-    lastComboTime = 0;
-    updateCombo(0);
-    updateComboTimerText();
-  } else if (comboTimerValue) {
-    comboTimerValue.textContent = `${(remaining / 1000).toFixed(1)}s`;
-  }
-}
-
-function updateComboTimerText() {
-  if (!comboTimerValue) return;
-  if (combo > 0 && lastComboTime) {
-    const remaining = Math.max(
-      0,
-      COMBO_WINDOW - (performance.now() - lastComboTime)
-    );
-    comboTimerValue.textContent =
-      remaining > 0 ? `${(remaining / 1000).toFixed(1)}s` : "--";
-  } else {
-    comboTimerValue.textContent = "--";
-  }
-}
-
-function showGameOverDialog() {
-  if (!gameOverLayer) return;
-  if (finalScoreValue) finalScoreValue.textContent = score;
-  if (finalComboValue) finalComboValue.textContent = bestCombo;
-  gameOverLayer.classList.add("visible");
-}
-
-function hideGameOverDialog() {
-  if (!gameOverLayer) return;
-  gameOverLayer.classList.remove("visible");
-}
-
-function showIntroDialog() {
-  if (!introLayer) return;
-  introLayer.classList.add("visible");
-}
-
-function hideIntroDialog() {
-  if (!introLayer) return;
-  introLayer.classList.remove("visible");
-}
-
-canvas.addEventListener("pointerdown", pointerDown);
-canvas.addEventListener("pointermove", pointerMove);
-canvas.addEventListener("pointerup", pointerUp);
-canvas.addEventListener("pointercancel", pointerCancel);
+// Event Listeners
+canvas.addEventListener("pointerdown", onPointerDown);
+canvas.addEventListener("pointermove", onPointerMove);
+canvas.addEventListener("pointerup", onPointerUp);
+canvas.addEventListener("pointercancel", onPointerCancel);
 window.addEventListener("resize", resizeCanvas);
-resetButton.addEventListener("click", resetGame);
-if (restartButton) {
-  restartButton.addEventListener("click", () => {
-    hideGameOverDialog();
-    resetGame();
-  });
-}
+dom.resetBtn.addEventListener("click", resetGame);
+dom.restartBtn?.addEventListener("click", resetGame);
+dom.startBtn?.addEventListener("click", resetGame);
 
-if (startButton) {
-  startButton.addEventListener("click", () => {
-    hideIntroDialog();
-    resetGame();
-  });
-}
-
-// 모바일 핀치 줌 방지
-window.addEventListener(
-  "gesturestart",
-  (event) => {
-    event.preventDefault();
-  },
-  { passive: false }
-);
-
+// Mobile gesture prevention
+window.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+window.addEventListener("touchstart", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 let lastTouchEnd = 0;
-window.addEventListener(
-  "touchstart",
-  (event) => {
-    if (event.touches.length > 1) {
-      event.preventDefault();
-    }
-  },
-  { passive: false }
-);
+window.addEventListener("touchend", (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 350) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 
-window.addEventListener(
-  "touchend",
-  (event) => {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 350) {
-      event.preventDefault();
-    }
-    lastTouchEnd = now;
-  },
-  { passive: false }
-);
-
+// Initialize
 resizeCanvas();
-updateTimerDisplay();
-updateComboTimerText();
+updateTimeDisplay();
+updateComboTimer();
+dom.intro.classList.add("visible");
 requestAnimationFrame(loop);
-showIntroDialog();
